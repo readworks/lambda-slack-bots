@@ -1,0 +1,30 @@
+"""Shared deploy config. Referenced by both the app and build stacks so the
+Lambda's target groups and the IAM policy that scopes access to them stay in
+sync.
+
+STUB: fill TARGET_SECURITY_GROUP_IDS with the real sg-ids before deploying.
+"""
+
+# Security groups the bot is allowed to modify.
+TARGET_SECURITY_GROUP_IDS: list[str] = [
+    "sg-0035a3a4aab535df9",
+]
+
+# Whitelist: Slack user_id -> the Description on that person's SG ingress rules.
+# Find a user_id in Slack: profile -> More -> Copy member ID.
+# STUB: add one entry per authorized person before deploying.
+WHITELIST: dict[str, str] = {
+    # "U0123456789": "ben",
+}
+
+# Restrict the command to a single Slack channel (defense-in-depth on top of the
+# whitelist). Get the id from the channel's "View channel details" in Slack.
+# Empty string = allow from anywhere. STUB: set before deploying.
+ALLOWED_CHANNEL_ID = ""
+
+# SSM parameter holding the Slack app signing secret (kept out of git).
+SIGNING_SECRET_PARAM = "slack-sg-bot-signing-secret"
+
+# Placeholder used to build a valid IAM resource ARN while the list is empty,
+# so `cdk synth` works before the real ids are filled in.
+_IAM_GROUP_IDS = TARGET_SECURITY_GROUP_IDS or ["sg-STUB"]

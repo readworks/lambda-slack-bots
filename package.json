@@ -1,0 +1,29 @@
+{
+  "name": "slack-bots",
+  "version": "1.0.0",
+  "description": "CDK deployment for Slack bots Lambda",
+  "scripts": {
+    "build": "echo \"Build step not required for Python CDK\" && exit 0",
+    "cdk": "cdk",
+    "synth": "npx cdk synth",
+    "deploy": "npx cdk deploy",
+    "deploy-all": "npx cdk deploy --all",
+    "diff": "npx cdk diff",
+    "bootstrap": "npx cdk bootstrap"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/readworks/lambda-slack-bots.git"
+  },
+  "keywords": [
+    "aws",
+    "cdk",
+    "lambda",
+    "slack"
+  ],
+  "author": "ReadWorks",
+  "license": "MIT",
+  "devDependencies": {
+    "aws-cdk": "^2.1024.0"
+  }
+}

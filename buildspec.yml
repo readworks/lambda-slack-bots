@@ -1,0 +1,34 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.14
+      nodejs: 22
+    commands:
+      - echo Installing dependencies...
+      - pip install uv
+
+  pre_build:
+    commands:
+      - echo Installing Python dependencies...
+      - uv sync --extra test
+      - echo Running tests...
+      - uv run pytest
+
+  build:
+    commands:
+      - echo Build started on `date`
+      - npm install
+      - uv sync --extra cdk
+      - echo Deploying Application Stack with CDK...
+      - uv run npx cdk deploy SlackBotsAppStack --no-notices --require-approval never
+
+  post_build:
+    commands:
+      - echo Build completed on `date`
+
+cache:
+  paths:
+    - "/root/.cache/uv/"
+    - "node_modules/"

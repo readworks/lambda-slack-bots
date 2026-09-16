@@ -1,0 +1,17 @@
+*.swp
+__pycache__
+.pytest_cache
+.env
+.venv
+*.egg-info
+
+env/
+venv/
+
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+
+# CDK asset staging directory
+.cdk.staging
+cdk.out
