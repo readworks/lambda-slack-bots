@@ -1,10 +1,12 @@
 import aws_cdk as cdk
 from aws_cdk import (
     Stack,
+    RemovalPolicy,
     aws_codebuild as codebuild,
     aws_iam as iam,
     aws_sns as sns,
     aws_sns_subscriptions as subscriptions,
+    aws_dynamodb as dynamodb,
 )
 from constructs import Construct
 
@@ -44,6 +46,7 @@ class SlackBotsBuildStack(Stack):
         param_arns = [
             f"arn:aws:ssm:{REGION}:{ACCOUNT_ID}:parameter/{config.SIGNING_SECRET_PARAM}",
         ]
+        rate_limit_table_arn = f"arn:aws:dynamodb:{REGION}:{ACCOUNT_ID}:table/{config.RATE_LIMIT_TABLE}"
 
         # Lambda execution role for the sg-ip-updater function. Owned here (admin
         # deployed) so the CI/CodeBuild role never needs to create or mutate IAM
@@ -65,11 +68,15 @@ class SlackBotsBuildStack(Stack):
                 resources=["*"],
             )
         )
+        # ModifySecurityGroupRules authorizes against BOTH the security group and
+        # each security-group-rule. Rule ARNs don't embed the group and aren't
+        # known ahead of time, so we allow all rule ARNs — the specific-group
+        # constraint still limits which groups' rules can actually be modified.
         lambda_role.add_to_policy(
             iam.PolicyStatement(
                 effect=iam.Effect.ALLOW,
                 actions=["ec2:ModifySecurityGroupRules"],
-                resources=sg_arns,
+                resources=sg_arns + [f"arn:aws:ec2:{REGION}:{ACCOUNT_ID}:security-group-rule/*"],
             )
         )
 
@@ -87,6 +94,27 @@ class SlackBotsBuildStack(Stack):
                 actions=["kms:Decrypt"],
                 resources=["*"],
                 conditions={"StringEquals": {"kms:ViaService": f"ssm.{REGION}.amazonaws.com"}},
+            )
+        )
+
+        # Rate-limit counters. Durable infra owned here (not the app stack), so
+        # app-stack deploys never need DynamoDB table-management permissions.
+        # TTL (`expireAt`) auto-purges old day rows.
+        dynamodb.Table(
+            self, "RateLimitTable",
+            table_name=config.RATE_LIMIT_TABLE,
+            partition_key=dynamodb.Attribute(name="pk", type=dynamodb.AttributeType.STRING),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            time_to_live_attribute="expireAt",
+            removal_policy=RemovalPolicy.DESTROY,
+        )
+
+        # The function only needs UpdateItem on that table.
+        lambda_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=["dynamodb:UpdateItem"],
+                resources=[rate_limit_table_arn],
             )
         )
 

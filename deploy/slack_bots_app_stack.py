@@ -30,6 +30,8 @@ class SlackBotsAppStack(Stack):
             f"arn:aws:iam::{self.account}:role/slack-sg-ip-updater-lambda",
             mutable=False,
         )
+        # The rate-limit DynamoDB table and its access grant are owned by the
+        # build stack (durable infra); this stack only references it by name.
 
         sg_ip_updater = _lambda.Function(
             self, "SgIpUpdaterFunction",
@@ -65,13 +67,19 @@ class SlackBotsAppStack(Stack):
                 ]
             ),
             timeout=Duration.seconds(10),
-            memory_size=128,
+            # More memory = more CPU = faster cold start, to stay under Slack's
+            # fixed 3s dispatch window. (Slack ignores the Lambda timeout above.)
+            memory_size=512,
             role=lambda_role,
             environment={
                 "TARGET_SECURITY_GROUP_IDS": ",".join(config.TARGET_SECURITY_GROUP_IDS),
                 "SIGNING_SECRET_PARAM": config.SIGNING_SECRET_PARAM,
                 "ALLOWED_CHANNEL_ID": config.ALLOWED_CHANNEL_ID,
                 "WHITELIST": json.dumps(config.WHITELIST),
+                "RATE_LIMIT_TABLE": config.RATE_LIMIT_TABLE,
+                "RATE_LIMIT_PER_DAY": str(config.RATE_LIMIT_PER_DAY),
+                "RATE_LIMIT_TOTAL_PER_DAY": str(config.RATE_LIMIT_TOTAL_PER_DAY),
+                "LOG_LEVEL": config.LOG_LEVEL,
             },
             retry_attempts=0,
         )

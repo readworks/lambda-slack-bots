@@ -15,13 +15,16 @@ from urllib.parse import parse_qs
 
 import boto3
 
-from slack_bots.sg_ip_updater import security_groups, slack_verify
+from slack_bots.sg_ip_updater import rate_limit, security_groups, slack_verify
 from slack_bots.sg_ip_updater.ssm import get_parameter
 
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logger.setLevel(os.environ.get("LOG_LEVEL", "INFO").upper())
 
 SIGNING_SECRET_PARAM = os.environ.get("SIGNING_SECRET_PARAM", "slack-sg-bot-signing-secret")
+
+# Sentinel "user" whose daily counter tracks the global cap across everyone.
+GLOBAL_KEY = "__global__"
 
 _ec2 = boto3.client("ec2")
 _signing_secret: str | None = None
@@ -69,6 +72,7 @@ def _validated_cidr(text: str) -> str | None:
 
 
 def handler(event, context):
+    logger.info("Handler invoked")
     headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
     raw_body = _raw_body(event)
 
@@ -84,6 +88,10 @@ def handler(event, context):
     form = {k: v[0] for k, v in parse_qs(raw_body).items()}
     user_id = form.get("user_id", "")
     text = form.get("text", "")
+    logger.info(
+        "Request: user_id=%s user_name=%s channel=%s command=%s text=%r",
+        user_id, form.get("user_name"), form.get("channel_id"), form.get("command"), text,
+    )
 
     allowed_channel = os.environ.get("ALLOWED_CHANNEL_ID", "")
     if allowed_channel and form.get("channel_id") != allowed_channel:
@@ -99,15 +107,32 @@ def handler(event, context):
     if not cidr:
         return _ephemeral(f":x: `{text}` is not a valid public IPv4 address. Usage: `/setip 1.2.3.4`")
 
+    rate_table = os.environ.get("RATE_LIMIT_TABLE", "")
+    if rate_table:
+        per_day = int(os.environ.get("RATE_LIMIT_PER_DAY", "3"))
+        total_per_day = int(os.environ.get("RATE_LIMIT_TOTAL_PER_DAY", "50"))
+        if not rate_limit.reserve(rate_table, user_id, per_day):
+            logger.info("Per-user rate limit hit for %s", user_id)
+            return _ephemeral(f":hourglass: Daily limit reached ({per_day} updates/day). Try again tomorrow.")
+        if not rate_limit.reserve(rate_table, GLOBAL_KEY, total_per_day):
+            rate_limit.release(rate_table, user_id)  # don't consume the per-user slot
+            logger.warning("Global rate limit hit (%s/day)", total_per_day)
+            return _ephemeral(f":hourglass: The global daily limit for this tool ({total_per_day}/day) has been reached.")
+
     group_ids = _target_group_ids()
     try:
         results = security_groups.update_ip(_ec2, group_ids, description, cidr)
     except Exception:
+        # The action failed, so hand the reserved slots back.
+        if rate_table:
+            rate_limit.release(rate_table, user_id)
+            rate_limit.release(rate_table, GLOBAL_KEY)
         logger.exception("Failed updating security groups for %s", description)
         return _ephemeral(":warning: Something went wrong updating the security groups. Check the logs.")
 
     updated = sum(results.values())
     skipped = [g for g, n in results.items() if n == 0]
+    logger.info("Updated %s -> %s across %s: %s", description, cidr, group_ids, results)
     lines = [f":white_check_mark: Updated *{description}* access to `{cidr}` — {updated} rule(s) across {len(group_ids)} group(s)."]
     if skipped:
         lines.append(f":information_source: No matching rule in: {', '.join(skipped)}")

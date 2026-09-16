@@ -14,7 +14,7 @@ cdk = [
 ]
 test = [
     "pytest>=8.0.0",
-    "moto[ec2,ssm]>=5.0.0",
+    "moto[ec2,ssm,dynamodb]>=5.0.0",
 ]
 
 [tool.uv]

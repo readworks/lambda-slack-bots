@@ -24,6 +24,14 @@ WHITELIST: dict[str, str] = {
 # Empty string = allow from anywhere. STUB: set before deploying.
 ALLOWED_CHANNEL_ID = "C0C1XPEBV1D"
 
+# Rate limits and the DynamoDB table that tracks them. Per-person cap plus a
+# global daily cap (this is a public Function URL, so bound total blast radius).
+RATE_LIMIT_PER_DAY = 3
+RATE_LIMIT_TOTAL_PER_DAY = 50
+RATE_LIMIT_TABLE = "slack-sg-ip-updater-ratelimit"
+
+# Lambda log verbosity (DEBUG/INFO/WARNING/ERROR).
+LOG_LEVEL = "INFO"
 
 # SSM parameter holding the Slack app signing secret (kept out of git).
 SIGNING_SECRET_PARAM = "slack-sg-bot-signing-secret"

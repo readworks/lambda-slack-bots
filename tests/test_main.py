@@ -7,10 +7,11 @@ import boto3
 import pytest
 from moto import mock_aws
 
-from slack_bots.sg_ip_updater import main, ssm
+from slack_bots.sg_ip_updater import main, rate_limit, ssm
 
 SECRET = "8f742231b10e8888abcd99yyyzzz85a5"
 USER_ID = "U12345"
+RATE_TABLE = "ratelimit"
 
 
 def _sign(ts, body):
@@ -40,8 +41,15 @@ def aws(monkeypatch):
     with mock_aws():
         ec2 = boto3.client("ec2", region_name="us-west-2")
         ssm_client = boto3.client("ssm", region_name="us-west-2")
+        ddb = boto3.resource("dynamodb", region_name="us-west-2")
 
         ssm_client.put_parameter(Name="slack-sg-bot-signing-secret", Value=SECRET, Type="SecureString")
+        ddb.create_table(
+            TableName=RATE_TABLE,
+            KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
 
         vpc = ec2.create_vpc(CidrBlock="10.0.0.0/16")["Vpc"]["VpcId"]
         gid = ec2.create_security_group(GroupName="t", Description="t", VpcId=vpc)["GroupId"]
@@ -56,10 +64,14 @@ def aws(monkeypatch):
         # Point module clients + config at the moto-backed resources.
         monkeypatch.setattr(main, "_ec2", ec2)
         monkeypatch.setattr(ssm, "_ssm", ssm_client)
+        monkeypatch.setattr(rate_limit, "_ddb", ddb)
         monkeypatch.setattr(main, "_signing_secret", None)
         monkeypatch.setenv("TARGET_SECURITY_GROUP_IDS", gid)
         monkeypatch.setenv("WHITELIST", json.dumps({USER_ID: "ben"}))
         monkeypatch.setenv("ALLOWED_CHANNEL_ID", CHANNEL_ID)
+        monkeypatch.setenv("RATE_LIMIT_TABLE", RATE_TABLE)
+        monkeypatch.setenv("RATE_LIMIT_PER_DAY", "3")
+        monkeypatch.setenv("RATE_LIMIT_TOTAL_PER_DAY", "50")
 
         yield {"ec2": ec2, "gid": gid}
 
@@ -77,6 +89,29 @@ def test_happy_path_updates_ip(aws):
     assert resp["statusCode"] == 200
     assert "1.2.3.4/32" in json.loads(resp["body"])["text"]
     assert _current_cidr(aws["ec2"], aws["gid"]) == ["1.2.3.4/32"]
+
+
+def test_rate_limited_after_daily_limit(aws):
+    for _ in range(3):
+        assert main.handler(_event("1.2.3.4"), None)["statusCode"] == 200
+
+    resp = main.handler(_event("5.6.7.8"), None)
+    assert "daily limit reached" in json.loads(resp["body"])["text"].lower()
+    # The 4th attempt was blocked before touching the security group.
+    assert _current_cidr(aws["ec2"], aws["gid"]) == ["1.2.3.4/32"]
+
+
+def test_global_daily_limit(aws, monkeypatch):
+    # Per-user allows plenty; global cap is 2, hit across different users.
+    monkeypatch.setenv("RATE_LIMIT_PER_DAY", "5")
+    monkeypatch.setenv("RATE_LIMIT_TOTAL_PER_DAY", "2")
+    monkeypatch.setenv("WHITELIST", json.dumps({"UA": "ben", "UB": "ben", "UC": "ben"}))
+
+    assert main.handler(_event("1.1.1.1", user_id="UA"), None)["statusCode"] == 200
+    assert main.handler(_event("2.2.2.2", user_id="UB"), None)["statusCode"] == 200
+
+    resp = main.handler(_event("3.3.3.3", user_id="UC"), None)
+    assert "global daily limit" in json.loads(resp["body"])["text"].lower()
 
 
 def test_bad_signature_returns_401(aws):
