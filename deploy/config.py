@@ -14,13 +14,16 @@ TARGET_SECURITY_GROUP_IDS: list[str] = [
 # Find a user_id in Slack: profile -> More -> Copy member ID.
 # STUB: add one entry per authorized person before deploying.
 WHITELIST: dict[str, str] = {
-    # "U0123456789": "ben",
+    "U04MJRX6N13": "ben",
+    "UM0CTDA0N": "caitlyn",
+    "UC5F7SVL4": "manjula",
 }
 
 # Restrict the command to a single Slack channel (defense-in-depth on top of the
 # whitelist). Get the id from the channel's "View channel details" in Slack.
 # Empty string = allow from anywhere. STUB: set before deploying.
-ALLOWED_CHANNEL_ID = ""
+ALLOWED_CHANNEL_ID = "C0C1XPEBV1D"
+
 
 # SSM parameter holding the Slack app signing secret (kept out of git).
 SIGNING_SECRET_PARAM = "slack-sg-bot-signing-secret"
