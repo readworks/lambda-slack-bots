@@ -8,6 +8,9 @@ from aws_cdk import (
     CfnOutput,
     aws_lambda as _lambda,
     aws_iam as iam,
+    aws_sns as sns,
+    aws_cloudwatch as cloudwatch,
+    aws_cloudwatch_actions as cw_actions,
 )
 from constructs import Construct
 
@@ -89,6 +92,25 @@ class SlackBotsAppStack(Stack):
         function_url = sg_ip_updater.add_function_url(
             auth_type=_lambda.FunctionUrlAuthType.NONE,
         )
+
+        # Errors alarm -> shared monitoring topic, so failed invocations page us
+        # (also satisfies the "every Lambda has an Errors alarm" control).
+        alarm_topic = sns.Topic.from_topic_arn(
+            self, "AlarmNotificationTopic",
+            topic_arn=f"arn:aws:sns:{self.region}:{self.account}:Dante-Monitoring-Alarm-Notifications",
+        )
+        sg_ip_updater.metric_errors(
+            period=Duration.minutes(5),
+            statistic="Sum",
+        ).create_alarm(
+            self, "SgIpUpdaterErrorsAlarm",
+            alarm_name="slack-sg-ip-updater-errors",
+            alarm_description="slack-sg-ip-updater Lambda reported invocation errors.",
+            threshold=1,
+            evaluation_periods=1,
+            comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+            treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
+        ).add_alarm_action(cw_actions.SnsAction(alarm_topic))
 
         CfnOutput(
             self, "SgIpUpdaterFunctionUrl",

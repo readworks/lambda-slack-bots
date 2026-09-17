@@ -204,6 +204,32 @@ class SlackBotsBuildStack(Stack):
             )
         )
 
+        # CloudWatch alarm CRUD for the app stack's Lambda Errors alarm. Put/Delete
+        # and tagging are scoped to the alarm; DescribeAlarms has no resource-level
+        # scoping so it must be on "*".
+        code_build_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "cloudwatch:PutMetricAlarm",
+                    "cloudwatch:DeleteAlarms",
+                    "cloudwatch:TagResource",
+                    "cloudwatch:UntagResource",
+                    "cloudwatch:ListTagsForResource",
+                ],
+                resources=[
+                    f"arn:aws:cloudwatch:{REGION}:{ACCOUNT_ID}:alarm:slack-sg-ip-updater-errors",
+                ]
+            )
+        )
+        code_build_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=["cloudwatch:DescribeAlarms"],
+                resources=["*"],
+            )
+        )
+
         # The app stack imports the Lambda execution role and passes it to the
         # function, so CI only needs to pass and read that one role.
         code_build_role.add_to_policy(
