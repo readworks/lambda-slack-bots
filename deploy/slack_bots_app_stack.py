@@ -85,6 +85,10 @@ class SlackBotsAppStack(Stack):
                 "LOG_LEVEL": config.LOG_LEVEL,
             },
             retry_attempts=0,
+            # Caps blast radius of a flood on the public URL: at most 2 concurrent
+            # invocations, so junk traffic can't drain account concurrency or cost.
+            # A 3-person slash command never approaches this.
+            reserved_concurrent_executions=2,
         )
 
         # Public URL Slack posts the slash command to. Auth is handled in-code by

@@ -197,6 +197,8 @@ class SlackBotsBuildStack(Stack):
                     "lambda:GetFunctionUrlConfig",
                     "lambda:PutFunctionEventInvokeConfig",
                     "lambda:DeleteFunctionEventInvokeConfig",
+                    "lambda:PutFunctionConcurrency",
+                    "lambda:DeleteFunctionConcurrency",
                 ],
                 resources=[
                     f"arn:aws:lambda:{REGION}:{ACCOUNT_ID}:function:slack-sg-ip-updater",
