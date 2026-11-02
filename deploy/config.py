@@ -7,7 +7,8 @@ STUB: fill TARGET_SECURITY_GROUP_IDS with the real sg-ids before deploying.
 
 # Security groups the bot is allowed to modify.
 TARGET_SECURITY_GROUP_IDS: list[str] = [
-    "sg-0035a3a4aab535df9",
+    "sg-0035a3a4aab535df9", # Kibana
+    "sg-75a77e11", # web-qa-loadbalancer
 ]
 
 # Whitelist: Slack user_id -> the Description on that person's SG ingress rules.
@@ -17,6 +18,7 @@ WHITELIST: dict[str, str] = {
     "U04MJRX6N13": "ben",
     "UM0CTDA0N": "caitlyn",
     "UC5F7SVL4": "manjula",
+    "U03GRHGURNJ": "paola",
 }
 
 # Restrict the command to a single Slack channel (defense-in-depth on top of the
